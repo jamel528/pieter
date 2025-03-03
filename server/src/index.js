@@ -12,6 +12,7 @@ dotenv.config();
 const app = express();
 
 const port = process.env.PORT || 5000;
+const __dirname = path.resolve();
 
 // Middleware
 app.use(cors());
@@ -23,8 +24,6 @@ app.use(express.static(path.join(__dirname, "../client/dist")));
 app.use("/api/auth", authRoutes);
 app.use("/api/instructions", instructionRoutes);
 app.use("/api", responseRoutes);
-
-const __dirname = path.resolve();
 
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "../client/dist/index.html"));
