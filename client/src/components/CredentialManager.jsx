@@ -1,7 +1,7 @@
 import { Dialog } from "@headlessui/react";
 import { useState } from "react";
 
-const API_URL = "http://localhost:5000/api";
+const API_URL = `${import.meta.env.VITE_BACKEND_URL}/api`;
 
 const CredentialManager = ({ isOpen, setIsOpen }) => {
   const [credentials, setCredentials] = useState({

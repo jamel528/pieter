@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
-const API_URL = "http://localhost:5000/api";
+const API_URL = `${import.meta.env.VITE_BACKEND_URL}/api`;
 
 const Login = () => {
   const [username, setUsername] = useState("");

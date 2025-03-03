@@ -19,7 +19,7 @@ import CredentialManager from "./CredentialManager";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = "http://localhost:5000/api";
+const API_URL = `${import.meta.env.VITE_BACKEND_URL}/api`;
 
 function classNames(...classes) {
   return classes.filter(Boolean).join(" ");
