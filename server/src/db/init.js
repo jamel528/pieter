@@ -21,6 +21,25 @@ const createTables = async (db) => {
     )
   `);
 
+  // Create settings table
+  await db.runAsync(`
+    CREATE TABLE IF NOT EXISTS settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_email TEXT NOT NULL,
+      rejection_email TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Insert default settings if not exists
+  const settings = await db.getAsync("SELECT * FROM settings LIMIT 1");
+  if (!settings) {
+    await db.runAsync(
+      "INSERT INTO settings (report_email, rejection_email) VALUES (?, ?)",
+      ["admin@example.com", "admin@example.com"]
+    );
+  }
+
   // Create instructions table
   await db.runAsync(`
     CREATE TABLE IF NOT EXISTS instructions (

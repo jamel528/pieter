@@ -1,8 +1,16 @@
 import express from "express";
 import db from "../db/init.js";
-import { auth } from "../middleware/auth.js";
 import PDFDocument from "pdfkit";
 import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+import archiver from "archiver";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { auth } from "../middleware/auth.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config();
 
 const router = express.Router();
 
@@ -28,9 +36,18 @@ function formatDate(date) {
   });
 }
 
+// Create temp directory if it doesn't exist
+const tempDir = path.join(__dirname, "../temp");
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir);
+}
+
 // Generate PDF report
 async function generatePDFReport(testRunId, testerName, startTime, endTime) {
-  // Get all test responses for this run
+  const pdfPath = path.join(tempDir, `${testRunId}_report.pdf`);
+  const zipPath = path.join(tempDir, `${testRunId}_report.zip`);
+
+  // Get test responses
   const responses = await db.allAsync(
     `SELECT tr.*, i.title, i.content, i.device
      FROM test_responses tr
@@ -49,12 +66,24 @@ async function generatePDFReport(testRunId, testerName, startTime, endTime) {
     [testRunId]
   );
 
-  console.log(questionnaireResponses);
-
   // Create PDF document
-  const doc = new PDFDocument();
-  let buffers = [];
-  doc.on("data", buffers.push.bind(buffers));
+  const doc = new PDFDocument({
+    margins: {
+      top: 72,
+      bottom: 72,
+      left: 72,
+      right: 72,
+    },
+  });
+
+  // Create write stream for PDF
+  const pdfStream = fs.createWriteStream(pdfPath);
+  doc.pipe(pdfStream);
+
+  // Add title
+  doc.fontSize(16);
+  doc.text(`Test Report for ${testerName}`, { align: "center" });
+  doc.moveDown();
 
   // Format dates for report
   const startDate = new Date(startTime);
@@ -76,6 +105,16 @@ async function generatePDFReport(testRunId, testerName, startTime, endTime) {
   );
   doc.moveDown(2);
 
+  // Set font to support symbols
+  doc.font("Helvetica");
+  doc.fontSize(12);
+
+  // Add test run info
+  doc.fontSize(12);
+  doc.text(`Test Run ID: ${testRunId}`);
+  doc.text(`Date: ${new Date().toLocaleDateString()}`);
+  doc.moveDown();
+
   // Speed test results section
   doc.text("The remarks of our test:", { align: "left" });
   doc.moveDown();
@@ -87,33 +126,73 @@ async function generatePDFReport(testRunId, testerName, startTime, endTime) {
 
   doc.moveDown(2);
 
-  // Test results section
-  doc.text(
-    `We tested the following ${responses.length} things, and here are the results:`,
-    { align: "left" }
-  );
+  // Add test responses
+  doc.text("Test Results:", { underline: true });
   doc.moveDown();
 
   responses.forEach((response) => {
-    doc.text(
-      `${response.test_number}: ${response.title}  [${
-        response.approved ? "Approved" : "Rejected"
-      }]`,
-      { continued: false }
-    );
+    const currentY = doc.y;
+    const leftMargin = doc.page.margins.left;
+    const textHeight = doc.currentLineHeight();
+
+    if (response.approved) {
+      // Draw checkmark at the start of the line
+      doc
+        .save()
+        .translate(leftMargin, currentY + textHeight / 2 - 6) // Center vertically with text
+        .path("M 0 5 L 3 8 L 8 0")
+        .lineWidth(1.5)
+        .stroke()
+        .restore();
+    } else {
+      // Draw X at the start of the line
+      doc
+        .save()
+        .translate(leftMargin, currentY + textHeight / 2 - 6) // Center vertically with text
+        .path("M 0 0 L 8 8 M 0 8 L 8 0")
+        .lineWidth(1.5)
+        .stroke()
+        .restore();
+    }
+
+    // Move cursor back to start of line and write text
+    doc.y = currentY;
+    doc.text(`${response.test_number}: ${response.title}`, {
+      continued: false,
+      indent: 20, // Make space for the checkmark/X
+    });
+
     if (!response.approved && response.remark) {
       doc.text(`   Remark: ${response.remark}`, { indent: 20 });
     }
     doc.moveDown(0.5);
   });
 
-  // Return promise that resolves with PDF buffer
-  return new Promise((resolve) => {
-    doc.on("end", () => {
-      resolve(Buffer.concat(buffers));
-    });
-    doc.end();
+  // End the document and wait for it to finish writing
+  doc.end();
+  await new Promise((resolve) => pdfStream.on("finish", resolve));
+
+  // Create zip file
+  const archive = archiver("zip", {
+    zlib: { level: 9 }, // Maximum compression
   });
+  const zipStream = fs.createWriteStream(zipPath);
+
+  archive.pipe(zipStream);
+  archive.file(pdfPath, { name: `${testerName}_test_report.pdf` });
+  await archive.finalize();
+
+  // Wait for zip to finish
+  await new Promise((resolve) => zipStream.on("close", resolve));
+
+  // Read the zip file
+  const zipBuffer = fs.readFileSync(zipPath);
+
+  // Clean up temp files
+  fs.unlinkSync(pdfPath);
+  fs.unlinkSync(zipPath);
+
+  return zipBuffer;
 }
 
 // Get questionnaire for session
@@ -174,6 +253,70 @@ router.post("/questionnaire/submit", async (req, res) => {
   }
 });
 
+// Send test report endpoint
+router.get("/report/:testRunId", async (req, res) => {
+  const { testRunId } = req.params;
+
+  try {
+    // Get test run info
+    const testRun = await db.getAsync(
+      "SELECT tester_name, created_at FROM test_responses WHERE test_run_id = ? LIMIT 1",
+      [testRunId]
+    );
+
+    if (!testRun) {
+      return res.status(404).json({ error: "Test run not found" });
+    }
+
+    const { tester_name: testerName, created_at: startTime } = testRun;
+    const endTime = new Date().toISOString();
+
+    // Generate PDF report
+    const zipBuffer = await generatePDFReport(
+      testRunId,
+      testerName,
+      startTime,
+      endTime
+    );
+
+    // Get report email from settings
+    const settings = await db.getAsync(
+      "SELECT report_email FROM settings LIMIT 1"
+    );
+    const reportEmail = settings.report_email;
+
+    // Configure email
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    // Send email with zip attachment
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM,
+      to: reportEmail,
+      subject: `Test Report: ${testerName}`,
+      text: `Please find attached the test report for ${testerName}.`,
+      attachments: [
+        {
+          filename: "test_report.zip",
+          content: zipBuffer,
+        },
+      ],
+    });
+
+    res.json({ message: "Report sent successfully" });
+  } catch (error) {
+    console.error("Error generating/sending report:", error);
+    res.status(500).json({ error: "Failed to generate/send report" });
+  }
+});
+
 // Generate report endpoint
 router.post("/report/generate", async (req, res) => {
   try {
@@ -185,14 +328,20 @@ router.post("/report/generate", async (req, res) => {
       );
     }
 
-    const pdfData = await generatePDFReport(
+    const zipBuffer = await generatePDFReport(
       testRunId,
       testerName,
       startTime,
       endTime
     );
 
-    // Send email with PDF report
+    // Get report email from settings
+    const settings = await db.getAsync(
+      "SELECT report_email FROM settings LIMIT 1"
+    );
+    const reportEmail = settings.report_email;
+
+    // Configure email
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -201,25 +350,20 @@ router.post("/report/generate", async (req, res) => {
       },
     });
 
-    if (!process.env.EMAIL_USER) {
-      throw new Error("Admin email not configured");
-    }
-
-    const mailOptions = {
-      from:
-        '"Test Instruction Management System" <' + process.env.EMAIL_USER + ">",
-      to: "Pieter@dayzsolutions.com",
-      subject: `Test Report for ${testerName}`,
+    // Send email with zip attachment
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM,
+      to: reportEmail,
+      subject: `Test Report: ${testerName}`,
       text: `Please find attached the test report for ${testerName}.`,
       attachments: [
         {
-          filename: `test-report-${testerName}.pdf`,
-          content: pdfData,
+          filename: "test_report.zip",
+          content: zipBuffer,
         },
       ],
-    };
+    });
 
-    await transporter.sendMail(mailOptions);
     res.json({ success: true });
   } catch (error) {
     console.error("Error generating report:", error);

@@ -329,20 +329,22 @@ const TesterPanel = () => {
         <p className="text-gray-300 mb-6">{currentInstruction.content}</p>
 
         {currentInstruction.video_url && (
-          <div className="mb-6">
-            <h3 className="text-white text-lg mb-2">Reference Video:</h3>
-            <a
-              href={currentInstruction.video_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-indigo-400 hover:text-indigo-300 underline"
-            >
-              Watch Video Tutorial
-            </a>
+          <div className="mt-4">
+            <h3 className="text-lg font-semibold text-white mb-2">Video Tutorial</h3>
+            <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+              <iframe
+                src={currentInstruction.video_url.replace('watch?v=', 'embed/')}
+                className="absolute top-0 left-0 w-full h-full rounded-lg"
+                title="Video Tutorial"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
           </div>
         )}
 
-        <div className="flex justify-center space-x-4">
+        <div className="flex justify-center space-x-4 mt-5">
           <button
             onClick={() => handleTestResponse(true)}
             className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"

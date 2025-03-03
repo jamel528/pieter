@@ -56,6 +56,11 @@ router.post("/:id/response", async (req, res) => {
     );
 
     if (!approved) {
+      const settings = await db.getAsync(
+        "SELECT rejection_email FROM settings LIMIT 1"
+      );
+      const rejectionEmail = settings.rejection_email;
+
       // Send email to notify admin
       const transporter = nodemailer.createTransport({
         service: "gmail",
@@ -70,7 +75,7 @@ router.post("/:id/response", async (req, res) => {
           '"Test Instruction Management System" <' +
           process.env.EMAIL_USER +
           ">",
-        to: "Pieter@dayzsolutions.com",
+        to: rejectionEmail,
         subject: `Test Rejected for ${testerName}`,
         html: `
           <p>A test was rejected for ${testerName} with the following remark:</p>
@@ -146,7 +151,10 @@ router.delete("/:id", auth, async (req, res) => {
     try {
       // Delete associated test responses if they exist
       if (responses.length > 0) {
-        await db.runAsync("DELETE FROM test_responses WHERE instruction_id = ?", [id]);
+        await db.runAsync(
+          "DELETE FROM test_responses WHERE instruction_id = ?",
+          [id]
+        );
       }
 
       // Delete the instruction and check if it existed

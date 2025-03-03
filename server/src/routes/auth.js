@@ -82,4 +82,38 @@ router.post("/change-credentials", auth, async (req, res) => {
   }
 });
 
+// Get email settings
+router.get("/settings", auth, async (req, res) => {
+  try {
+    const settings = await db.getAsync("SELECT * FROM settings LIMIT 1");
+    res.json({
+      report_email: settings.report_email,
+      rejection_email: settings.rejection_email,
+    });
+  } catch (error) {
+    console.error("Error fetching email settings:", error);
+    res.status(500).json({ error: "Failed to fetch email settings" });
+  }
+});
+
+// Update email settings
+router.put("/settings", auth, async (req, res) => {
+  const { report_email, rejection_email } = req.body;
+
+  if (!report_email || !rejection_email) {
+    return res.status(400).json({ error: "Both email addresses are required" });
+  }
+
+  try {
+    await db.runAsync(
+      "UPDATE settings SET report_email = ?, rejection_email = ?, updated_at = CURRENT_TIMESTAMP",
+      [report_email, rejection_email]
+    );
+    res.json({ message: "Email settings updated successfully" });
+  } catch (error) {
+    console.error("Error updating email settings:", error);
+    res.status(500).json({ error: "Failed to update email settings" });
+  }
+});
+
 export default router;
