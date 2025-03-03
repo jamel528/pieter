@@ -204,6 +204,29 @@ const TesterPanel = () => {
     }
   };
 
+  const getEmbedUrl = (url) => {
+    if (!url) return '';
+    
+    // Handle YouTube URLs
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      return url.replace('watch?v=', 'embed/');
+    }
+    
+    // Handle Loom URLs
+    if (url.includes('loom.com')) {
+      // Extract the video hash from various Loom URL formats
+      const match = url.match(/(?:share|embed)\/([a-zA-Z0-9]+)/);
+      if (match) {
+        return `https://www.loom.com/embed/${match[1]}`;
+      }
+      // Handle direct video URLs
+      const videoHash = url.split('/').pop();
+      return `https://www.loom.com/embed/${videoHash}`;
+    }
+    
+    return url;
+  };
+
   if (loading) {
     return <div className="text-center text-white mt-8">Loading...</div>;
   }
@@ -333,7 +356,7 @@ const TesterPanel = () => {
             <h3 className="text-lg font-semibold text-white mb-2">Video Tutorial</h3>
             <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
               <iframe
-                src={currentInstruction.video_url.replace('watch?v=', 'embed/')}
+                src={getEmbedUrl(currentInstruction.video_url)}
                 className="absolute top-0 left-0 w-full h-full rounded-lg"
                 title="Video Tutorial"
                 frameBorder="0"
