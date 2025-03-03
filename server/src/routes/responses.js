@@ -208,7 +208,7 @@ router.post("/report/generate", async (req, res) => {
     const mailOptions = {
       from:
         '"Test Instruction Management System" <' + process.env.EMAIL_USER + ">",
-      to: "jamel.nobles528@gmail.com",
+      to: "Pieter@dayzsolutions.com",
       subject: `Test Report for ${testerName}`,
       text: `Please find attached the test report for ${testerName}.`,
       attachments: [

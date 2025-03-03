@@ -70,7 +70,7 @@ router.post("/:id/response", async (req, res) => {
           '"Test Instruction Management System" <' +
           process.env.EMAIL_USER +
           ">",
-        to: "jamel.nobles528@gmail.com",
+        to: "Pieter@dayzsolutions.com",
         subject: `Test Rejected for ${testerName}`,
         html: `
           <p>A test was rejected for ${testerName} with the following remark:</p>
@@ -134,27 +134,54 @@ router.delete("/:id", auth, async (req, res) => {
   const { id } = req.params;
 
   try {
-    const result = await db.runAsync("DELETE FROM instructions WHERE id = ?", [
-      id,
-    ]);
-
-    if (result.changes === 0) {
-      return res.status(404).json({ error: "Instruction not found" });
-    }
-
-    // Reorder remaining instructions
-    const remainingInstructions = await db.allAsync(
-      "SELECT id FROM instructions ORDER BY order_index ASC"
+    // First check if there are any test responses associated with this instruction
+    const responses = await db.allAsync(
+      "SELECT id FROM test_responses WHERE instruction_id = ?",
+      [id]
     );
 
-    for (let i = 0; i < remainingInstructions.length; i++) {
-      await db.runAsync(
-        "UPDATE instructions SET order_index = ? WHERE id = ?",
-        [i + 1, remainingInstructions[i].id]
-      );
-    }
+    // Begin transaction
+    await db.runAsync("BEGIN TRANSACTION");
 
-    res.json({ message: "Instruction deleted successfully" });
+    try {
+      // Delete associated test responses if they exist
+      if (responses.length > 0) {
+        await db.runAsync("DELETE FROM test_responses WHERE instruction_id = ?", [id]);
+      }
+
+      // Delete the instruction and check if it existed
+      const instruction = await db.getAsync(
+        "SELECT id FROM instructions WHERE id = ?",
+        [id]
+      );
+
+      if (!instruction) {
+        await db.runAsync("ROLLBACK");
+        return res.status(404).json({ error: "Instruction not found" });
+      }
+
+      await db.runAsync("DELETE FROM instructions WHERE id = ?", [id]);
+
+      // Get remaining instructions and update their order
+      const remainingInstructions = await db.allAsync(
+        "SELECT id FROM instructions ORDER BY order_index ASC"
+      );
+
+      // Update order_index for remaining instructions
+      for (let i = 0; i < remainingInstructions.length; i++) {
+        await db.runAsync(
+          "UPDATE instructions SET order_index = ? WHERE id = ?",
+          [i + 1, remainingInstructions[i].id]
+        );
+      }
+
+      // Commit transaction
+      await db.runAsync("COMMIT");
+      res.json({ message: "Instruction deleted successfully" });
+    } catch (error) {
+      await db.runAsync("ROLLBACK");
+      throw error;
+    }
   } catch (error) {
     console.error("Delete instruction error:", error);
     res.status(500).json({ error: "Server error" });
@@ -180,6 +207,61 @@ router.post("/reorder", auth, async (req, res) => {
     res.json(updatedInstructions);
   } catch (error) {
     console.error("Reorder instructions error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Delete questionnaire (protected)
+router.delete("/questionnaire/:id", auth, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Begin transaction
+    await db.runAsync("BEGIN TRANSACTION");
+
+    try {
+      // Check if questionnaire exists
+      const questionnaire = await db.getAsync(
+        "SELECT id FROM questionnaires WHERE id = ?",
+        [id]
+      );
+
+      if (!questionnaire) {
+        await db.runAsync("ROLLBACK");
+        return res.status(404).json({ error: "Questionnaire not found" });
+      }
+
+      // Delete associated responses first
+      await db.runAsync(
+        "DELETE FROM questionnaire_responses WHERE questionnaire_id = ?",
+        [id]
+      );
+
+      // Delete the questionnaire
+      await db.runAsync("DELETE FROM questionnaires WHERE id = ?", [id]);
+
+      // Get remaining questionnaires and update their order
+      const remainingQuestionnaires = await db.allAsync(
+        "SELECT id FROM questionnaires ORDER BY order_index ASC"
+      );
+
+      // Update order_index for remaining questionnaires
+      for (let i = 0; i < remainingQuestionnaires.length; i++) {
+        await db.runAsync(
+          "UPDATE questionnaires SET order_index = ? WHERE id = ?",
+          [i + 1, remainingQuestionnaires[i].id]
+        );
+      }
+
+      // Commit transaction
+      await db.runAsync("COMMIT");
+      res.json({ message: "Questionnaire deleted successfully" });
+    } catch (error) {
+      await db.runAsync("ROLLBACK");
+      throw error;
+    }
+  } catch (error) {
+    console.error("Delete questionnaire error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });

@@ -41,6 +41,7 @@ const AdminPanel = () => {
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedInstruction, setSelectedInstruction] = useState(null);
+  const token = localStorage.getItem("token");
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -58,7 +59,7 @@ const AdminPanel = () => {
     try {
       const response = await fetch(`${API_URL}/instructions`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
       });
       const data = await response.json();
@@ -73,7 +74,7 @@ const AdminPanel = () => {
     try {
       const response = await fetch(`${API_URL}/questionnaires`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
       });
       const data = await response.json();
@@ -104,7 +105,7 @@ const AdminPanel = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ instructions: newOrder }),
       });
@@ -123,7 +124,7 @@ const AdminPanel = () => {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             title: newInstruction.title,
@@ -138,7 +139,7 @@ const AdminPanel = () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             title: newInstruction.title,
@@ -200,7 +201,7 @@ const AdminPanel = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ questions }),
       });
@@ -222,7 +223,7 @@ const AdminPanel = () => {
       const response = await fetch(`${API_URL}/instructions/${selectedInstruction.id}`, {
         method: "DELETE",
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -235,6 +236,32 @@ const AdminPanel = () => {
     } catch (error) {
       console.error("Error deleting instruction:", error);
       toast.error("Failed to delete instruction");
+    } finally {
+      setShowDeleteDialog(false);
+      setSelectedInstruction(null);
+    }
+  };
+
+  const handleDeleteQuestion = async () => {
+    if (!selectedInstruction) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/instructions/questionnaire/${selectedInstruction.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        setQuestionnaires(questionnaires.filter((q) => q.id !== selectedInstruction.id));
+        toast.success("Question deleted successfully");
+      } else {
+        toast.error("Failed to delete question");
+      }
+    } catch (error) {
+      console.error("Error deleting question:", error);
+      toast.error("Failed to delete question");
     } finally {
       setShowDeleteDialog(false);
       setSelectedInstruction(null);
@@ -579,12 +606,21 @@ const AdminPanel = () => {
               >
                 Cancel
               </button>
-              <button
-                onClick={handleDeleteConfirm}
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-              >
-                Delete
-              </button>
+              {selectedInstruction && instructions.find((i) => i.id === selectedInstruction.id) ? (
+                <button
+                  onClick={handleDeleteConfirm}
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Delete
+                </button>
+              ) : (
+                <button
+                  onClick={handleDeleteQuestion}
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         </div>
